@@ -1,8 +1,10 @@
 package com.willfp.ecopets.pets
 
 import com.willfp.eco.core.EcoPlugin
+import com.willfp.eco.core.scheduling.UnifiedTask
 import com.willfp.eco.util.NumberUtils
 import com.willfp.eco.util.formatEco
+import com.willfp.ecopets.ecoPetsPlugin
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.ArmorStand
@@ -10,28 +12,38 @@ import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerChangedWorldEvent
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerTeleportEvent
-import java.util.UUID
+import java.util.*
 import kotlin.math.PI
 import kotlin.math.abs
 
 class PetDisplay(
     private val plugin: EcoPlugin
 ) : Listener {
-    private var tick = 0
-
     private val trackedEntities = mutableMapOf<UUID, PetArmorStand>()
+    private val playerTickers = mutableMapOf<UUID, UnifiedTask>()
+    private val playerTicks = mutableMapOf<UUID, Int>()
 
-    fun tickAll() {
-        for (player in Bukkit.getOnlinePlayers()) {
-            tickPlayer(player)
-        }
+    fun update() {
+        playerTickers.values.forEach { it.cancel() }
+        playerTickers.clear()
+        playerTickers.putAll(Bukkit.getOnlinePlayers().associate { it.uniqueId to ecoPetsPlugin.scheduler
+            .runTimer(it, 1, 1) { tickPlayer(it) } })
+    }
 
-        tick++
+    private fun addPlayer(player: Player) {
+        playerTickers.remove(player.uniqueId)?.cancel()
+        playerTickers[player.uniqueId] = ecoPetsPlugin.scheduler.runTimer(player, 1, 1) { tickPlayer(player) }
+    }
+
+    private fun removePlayer(player: Player) {
+        playerTickers.remove(player.uniqueId)?.cancel()
     }
 
     private fun tickPlayer(player: Player) {
+        val tick = playerTicks[player.uniqueId] ?: 0
         val stand = getOrNew(player) ?: return
         val pet = player.activePet
 
@@ -53,13 +65,15 @@ class PetDisplay(
             location.y += NumberUtils.fastSin(tick / (2 * PI) * 0.5) * 0.15
 
             if (location.world != null) {
-                stand.teleport(location)
+                stand.teleportAsync(location)
             }
 
             if (!pet.entityTexture.contains(":")) {
                 stand.setRotation((20 * tick / (2 * PI)).toFloat(), 0f)
             }
         }
+
+        playerTicks[player.uniqueId] = tick + 1
     }
 
     private fun getLocation(player: Player): Location {
@@ -91,7 +105,11 @@ class PetDisplay(
 
         val pet = player.activePet
         if (pet != tracked?.pet) {
-            tracked?.stand?.remove()
+            tracked?.stand?.let {
+                plugin.scheduler.run(it) {
+                    it.remove()
+                }
+            }
         }
 
         if (existing == null || existing.isDead || pet == null) {
@@ -120,13 +138,23 @@ class PetDisplay(
     }
 
     private fun remove(player: Player) {
-        trackedEntities[player.uniqueId]?.stand?.remove()
-        trackedEntities.remove(player.uniqueId)
+        trackedEntities[player.uniqueId]?.stand?.let {
+            plugin.scheduler.run(it) {
+                it.remove()
+                trackedEntities.remove(player.uniqueId)
+            }
+        }
+    }
+
+    @EventHandler
+    fun onJoin(event: PlayerJoinEvent) {
+        addPlayer(event.player)
     }
 
     @EventHandler
     fun onLeave(event: PlayerQuitEvent) {
         remove(event.player)
+        removePlayer(event.player)
     }
 
     @EventHandler

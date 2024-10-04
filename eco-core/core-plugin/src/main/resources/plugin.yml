@@ -1,3 +1,4 @@
+folia-supported: true
 name: ${pluginName}
 version: ${version}
 main: com.willfp.ecopets.EcoPetsPlugin

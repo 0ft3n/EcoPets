@@ -21,7 +21,6 @@ import com.willfp.ecopets.pets.SpawnEggHandler
 import com.willfp.ecopets.pets.activePet
 import com.willfp.ecopets.pets.activePetLevel
 import com.willfp.ecopets.pets.hasPet
-import com.willfp.ecopets.pets.entity.ModelEnginePetEntity
 import com.willfp.ecopets.pets.entity.PetEntity
 import com.willfp.libreforge.SimpleProvidedHolder
 import com.willfp.libreforge.conditions.Conditions
@@ -35,11 +34,15 @@ import com.willfp.libreforge.triggers.Triggers
 import org.bukkit.entity.Player
 import org.bukkit.event.Listener
 
+lateinit var ecoPetsPlugin: EcoPetsPlugin
+    private set
+
 class EcoPetsPlugin : LibreforgePlugin() {
     private val petDisplay = PetDisplay(this)
 
     init {
         instance = this
+        ecoPetsPlugin = this
     }
 
     override fun loadConfigCategories(): List<ConfigCategory> {
@@ -92,23 +95,11 @@ class EcoPetsPlugin : LibreforgePlugin() {
             return
         }
 
-        this.scheduler.runTimer(1, 1) {
-            petDisplay.tickAll()
-        }
+        petDisplay.update()
     }
 
     override fun handleDisable() {
         petDisplay.shutdown()
-    }
-
-    override fun loadIntegrationLoaders(): List<IntegrationLoader> {
-        return listOf(
-            IntegrationLoader("ModelEngine") {
-                PetEntity.registerPetEntity("modelengine") { pet, id ->
-                    ModelEnginePetEntity(pet, id, this)
-                }
-            }
-        )
     }
 
     override fun loadPluginCommands(): List<PluginCommand> {
